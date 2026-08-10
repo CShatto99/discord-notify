@@ -1,8 +1,8 @@
 {
-  "name": "notifybox",
+  "name": "discord-notify",
   "version": "1.0.0",
   "type": "module",
-  "main": "steam-free-games-monitor.js",
+  "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "schedule": "node src/scheduler.js",

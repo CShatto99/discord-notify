@@ -8,10 +8,10 @@ import {
   compareGames,
   default as steamFreeGamesNotifier,
   parseFreeGames,
-} from './src/notifiers/steam-free-games.js';
-import { runNotifier } from './src/lib/runner.js';
-import { sendDiscordMessage } from './src/lib/discord.js';
-import { selectNotifiers } from './src/index.js';
+} from '../src/notifiers/steam-free-games.js';
+import { runNotifier } from '../src/lib/runner.js';
+import { sendDiscordMessage } from '../src/lib/discord.js';
+import { selectNotifiers } from '../src/index.js';
 
 const SEARCH_HTML = `
   <a class="search_result_row" href="https://store.steampowered.com/app/200/Beta_Game/?snr=1_7_7_151_150_1">
@@ -348,4 +348,12 @@ test('selectNotifiers rejects an unknown notifier id', () => {
     () => selectNotifiers([{ id: 'steam-free-games' }], 'missing'),
     /Unknown notifier: missing/,
   );
+});
+
+test('package entrypoint points at the notifier framework', async () => {
+  const packageJson = JSON.parse(
+    await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  );
+
+  assert.equal(packageJson.main, 'src/index.js');
 });

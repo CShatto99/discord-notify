@@ -1,4 +1,4 @@
-# Notifybox
+# Discord Notify
 
 Code-first Node.js notifier framework for scheduled checks that post changes to one Discord channel.
 
