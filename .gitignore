@@ -1,0 +1,4 @@
+node_modules/
+steam-free-games.json
+.env
+snapshots/
