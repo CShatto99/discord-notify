@@ -9,9 +9,16 @@ import {
   default as steamFreeGamesNotifier,
   parseFreeGames,
 } from '../src/notifiers/steam-free-games.js';
+import {
+  buildDiscordMessage as buildLegoDiscordMessage,
+  compareIdeas,
+  default as legoApprovedIdeasNotifier,
+  normalizeIdeasResponse,
+} from '../src/notifiers/lego-approved-ideas.js';
 import { runNotifier } from '../src/lib/runner.js';
 import { sendDiscordMessage } from '../src/lib/discord.js';
 import { selectNotifiers } from '../src/index.js';
+import { notifiers } from '../src/notifiers/index.js';
 
 const SEARCH_HTML = `
   <a class="search_result_row" href="https://store.steampowered.com/app/200/Beta_Game/?snr=1_7_7_151_150_1">
@@ -43,12 +50,47 @@ const ALPHA_BETA_HTML = `
   </a>
 `;
 
+const LEGO_API_RESPONSE = {
+  productIdeas: [
+    {
+      id: 'beta-uuid',
+      attributes: {
+        uuid: 'beta-uuid',
+        title: 'Beta Build',
+        creator: { attributes: { alias: 'BetaBuilder' } },
+        support_count: 10001,
+        published_at: '2026-02-01T00:00:00.000Z',
+        updated_at: '2026-02-02T00:00:00.000Z',
+      },
+    },
+    {
+      id: 'alpha-uuid',
+      attributes: {
+        title: 'Alpha Build',
+        creator: { attributes: { alias: 'AlphaBuilder' } },
+        support_count: 10000,
+        published_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-02T00:00:00.000Z',
+      },
+    },
+  ],
+};
+
 function htmlFetch(html) {
   return async () => ({
     ok: true,
     status: 200,
     statusText: 'OK',
     text: async () => html,
+  });
+}
+
+function jsonFetch(payload) {
+  return async () => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => payload,
   });
 }
 
@@ -60,9 +102,24 @@ async function tempSnapshotFile() {
   };
 }
 
+async function tempLegoSnapshotFile() {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'lego-ideas-monitor-'));
+  return {
+    directory,
+    snapshotFile: path.join(directory, 'lego-approved-ideas.json'),
+  };
+}
+
 function steamNotifierForTest(snapshotFile) {
   return {
     ...steamFreeGamesNotifier,
+    snapshotFile,
+  };
+}
+
+function legoNotifierForTest(snapshotFile) {
+  return {
+    ...legoApprovedIdeasNotifier,
     snapshotFile,
   };
 }
@@ -123,6 +180,114 @@ test('compareGames ignores reordered games', () => {
     added: [],
     removed: [],
   });
+});
+
+test('normalizeIdeasResponse extracts stable LEGO idea records sorted by uuid', () => {
+  assert.deepEqual(normalizeIdeasResponse(LEGO_API_RESPONSE), [
+    {
+      uuid: 'alpha-uuid',
+      title: 'Alpha Build',
+      creator: 'AlphaBuilder',
+      supportCount: 10000,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+      url: 'https://ideas.lego.com/projects/alpha-uuid',
+    },
+    {
+      uuid: 'beta-uuid',
+      title: 'Beta Build',
+      creator: 'BetaBuilder',
+      supportCount: 10001,
+      publishedAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z',
+      url: 'https://ideas.lego.com/projects/beta-uuid',
+    },
+  ]);
+});
+
+test('normalizeIdeasResponse refuses an empty LEGO result', () => {
+  assert.throws(
+    () => normalizeIdeasResponse({ productIdeas: [] }),
+    /LEGO Ideas returned zero approved ideas/,
+  );
+});
+
+test('compareIdeas reports only newly approved ideas by uuid', () => {
+  const previous = [
+    { uuid: 'alpha-uuid', title: 'Alpha Build' },
+    { uuid: 'removed-uuid', title: 'Removed Build' },
+  ];
+  const current = [
+    { uuid: 'alpha-uuid', title: 'Alpha Build Updated' },
+    { uuid: 'beta-uuid', title: 'Beta Build' },
+  ];
+
+  assert.deepEqual(compareIdeas(previous, current), {
+    added: [current[1]],
+  });
+});
+
+test('LEGO getCurrentState rejects non-success responses', async () => {
+  await assert.rejects(
+    legoApprovedIdeasNotifier.getCurrentState({
+      fetchImpl: async () => ({ ok: false, status: 503, statusText: 'Unavailable' }),
+    }),
+    /LEGO Ideas request failed: 503 Unavailable/,
+  );
+});
+
+test('runNotifier preserves the old snapshot when LEGO returns zero ideas', async () => {
+  const { directory, snapshotFile } = await tempLegoSnapshotFile();
+  test.after(async () => fs.rm(directory, { recursive: true, force: true }));
+  const previousContents = JSON.stringify([
+    {
+      uuid: 'alpha-uuid',
+      title: 'Alpha Build',
+      creator: 'AlphaBuilder',
+      supportCount: 10000,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+      url: 'https://ideas.lego.com/projects/alpha-uuid',
+    },
+  ], null, 2);
+  await fs.writeFile(snapshotFile, previousContents, 'utf8');
+
+  await assert.rejects(
+    runNotifier(legoNotifierForTest(snapshotFile), {
+      fetchImpl: jsonFetch({ productIdeas: [] }),
+      logger: null,
+      webhookUrl: 'https://discord.example/webhook',
+    }),
+    /LEGO Ideas returned zero approved ideas/,
+  );
+  assert.equal(await fs.readFile(snapshotFile, 'utf8'), previousContents);
+});
+
+test('buildLegoDiscordMessage includes newly approved ideas', () => {
+  const message = buildLegoDiscordMessage({
+    changes: {
+      added: [
+        {
+          uuid: 'beta-uuid',
+          title: 'Beta Build',
+          creator: 'BetaBuilder',
+          supportCount: 10001,
+          url: 'https://ideas.lego.com/projects/beta-uuid',
+        },
+      ],
+    },
+    currentState: normalizeIdeasResponse(LEGO_API_RESPONSE),
+  });
+
+  assert.equal(message.username, 'LEGO Approved Ideas');
+  assert.equal(message.embeds[0].title, 'New LEGO Ideas Approved');
+  assert.match(message.embeds[0].description, /currently \*\*2\*\* approved ideas/);
+  assert.deepEqual(message.embeds[0].fields, [
+    {
+      name: 'Newly Approved',
+      value: '[Beta Build](https://ideas.lego.com/projects/beta-uuid) by BetaBuilder - 10,001 supporters',
+    },
+  ]);
 });
 
 test('runNotifier creates a baseline without requiring Discord', async () => {
@@ -347,6 +512,28 @@ test('selectNotifiers rejects an unknown notifier id', () => {
   assert.throws(
     () => selectNotifiers([{ id: 'steam-free-games' }], 'missing'),
     /Unknown notifier: missing/,
+  );
+});
+
+test('all registered notifiers run daily at 10 AM Central Time', () => {
+  assert.deepEqual(
+    notifiers.map(notifier => ({
+      id: notifier.id,
+      schedule: notifier.schedule,
+      timezone: notifier.timezone,
+    })),
+    [
+      {
+        id: 'steam-free-games',
+        schedule: '0 10 * * *',
+        timezone: 'America/Chicago',
+      },
+      {
+        id: 'lego-approved-ideas',
+        schedule: '0 10 * * *',
+        timezone: 'America/Chicago',
+      },
+    ],
   );
 });
 

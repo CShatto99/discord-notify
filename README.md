@@ -28,6 +28,7 @@ Run one notifier by id:
 
 ```bash
 npm start -- steam-free-games
+npm start -- lego-approved-ideas
 ```
 
 ## Run On A Schedule
@@ -38,7 +39,7 @@ Keep the process alive and run each notifier on its configured schedule:
 npm run schedule
 ```
 
-The Steam notifier runs daily at 8:00 PM Central Time using the `America/Chicago` timezone.
+The Steam and LEGO Ideas notifiers run daily at 10:00 AM Central Time using the `America/Chicago` timezone.
 
 This is OS-agnostic, but the process must stay running. For unattended machines, use your preferred process manager, service runner, Docker restart policy, or host startup mechanism.
 
@@ -84,4 +85,4 @@ Then register it in `src/notifiers/index.js`.
 
 Snapshots are stored under `snapshots/` and ignored by Git. First runs create a baseline and send no Discord message. Changed runs send Discord first and update the snapshot only after Discord succeeds.
 
-The Steam notifier refuses to save a zero-game result so a scrape failure does not look like every game was removed.
+The Steam notifier refuses to save a zero-game result so a scrape failure does not look like every game was removed. The LEGO Ideas notifier similarly refuses to save a zero-idea API result.

@@ -116,7 +116,7 @@ export function buildDiscordMessage({ changes, currentState }) {
 export default {
   id: 'steam-free-games',
   name: 'Steam Free Games',
-  schedule: '0 20 * * *',
+  schedule: '0 10 * * *',
   timezone: 'America/Chicago',
   snapshotFile: 'snapshots/steam-free-games.json',
   getCurrentState,
