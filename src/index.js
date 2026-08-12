@@ -28,7 +28,13 @@ export async function runSelectedNotifiers({
   const results = [];
 
   for (const notifier of selectedNotifiers) {
-    results.push(await runNotifier(notifier, { logger }));
+    try {
+      results.push(await runNotifier(notifier, { logger }));
+    } catch (error) {
+      logger?.error(`${notifier.name} failed:`);
+      logger?.error(error);
+      results.push({ status: 'failed', notifierId: notifier.id, error });
+    }
   }
 
   return results;

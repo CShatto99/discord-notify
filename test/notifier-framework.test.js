@@ -17,7 +17,7 @@ import {
 } from '../src/notifiers/lego-approved-ideas.js';
 import { runNotifier } from '../src/lib/runner.js';
 import { sendDiscordMessage } from '../src/lib/discord.js';
-import { selectNotifiers } from '../src/index.js';
+import { runSelectedNotifiers, selectNotifiers } from '../src/index.js';
 import { notifiers } from '../src/notifiers/index.js';
 
 const SEARCH_HTML = `
@@ -513,6 +513,67 @@ test('selectNotifiers rejects an unknown notifier id', () => {
     () => selectNotifiers([{ id: 'steam-free-games' }], 'missing'),
     /Unknown notifier: missing/,
   );
+});
+
+test('runSelectedNotifiers continues after a notifier returns a non-ideal result', async () => {
+  const calls = [];
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'selected-notifiers-'));
+  test.after(async () => fs.rm(directory, { recursive: true, force: true }));
+  const first = {
+    id: 'first-notifier',
+    name: 'First Notifier',
+    async getCurrentState() {
+      calls.push('first');
+      throw new Error('external page returned no results');
+    },
+  };
+  const second = {
+    id: 'second-notifier',
+    name: 'Second Notifier',
+    snapshotFile: path.join(directory, 'second.json'),
+    async getCurrentState() {
+      calls.push('second');
+      return [{ id: 'baseline' }];
+    },
+  };
+
+  const results = await runSelectedNotifiers({
+    availableNotifiers: [first, second],
+    logger: null,
+  });
+
+  assert.deepEqual(calls, ['first', 'second']);
+  assert.equal(results[0].status, 'failed');
+  assert.equal(results[0].notifierId, 'first-notifier');
+  assert.match(results[0].error.message, /external page returned no results/);
+  assert.equal(results[1].status, 'baseline-created');
+});
+
+test('runSelectedNotifiers does not send Discord for failed notifier results', async () => {
+  const failingNotifier = {
+    id: 'failing-notifier',
+    name: 'Failing Notifier',
+    async getCurrentState() {
+      throw new Error('zero results');
+    },
+  };
+  const originalWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  process.env.DISCORD_WEBHOOK_URL = 'https://discord.example/webhook';
+  test.after(() => {
+    if (originalWebhookUrl === undefined) {
+      delete process.env.DISCORD_WEBHOOK_URL;
+    } else {
+      process.env.DISCORD_WEBHOOK_URL = originalWebhookUrl;
+    }
+  });
+
+  const results = await runSelectedNotifiers({
+    availableNotifiers: [failingNotifier],
+    logger: null,
+  });
+
+  assert.equal(results[0].status, 'failed');
+  assert.equal(results[0].error.message, 'zero results');
 });
 
 test('all registered notifiers run daily at 10 AM Central Time', () => {

@@ -35,7 +35,13 @@ npm start -- lego-approved-ideas
 
 The included GitHub Actions workflow runs all notifiers daily with `npm start` and commits changed `snapshots/` files back to the repository.
 
-Add a repository secret named `DISCORD_WEBHOOK_URL` with your Discord webhook URL.
+To enable the workflow:
+
+1. Add a repository secret named `DISCORD_WEBHOOK_URL` with your Discord webhook URL.
+2. Set Actions workflow permissions to `Read and write permissions` so the workflow can commit snapshots.
+3. Run the `Notifiers` workflow manually once from GitHub's Actions tab to create baseline snapshots.
+
+The first successful run creates baseline snapshots and usually sends no Discord messages. Later runs compare against committed snapshots and notify only on changes.
 
 The workflow is scheduled with `0 15 * * *` in UTC. This is 10:00 AM Central during daylight saving time and 9:00 AM Central during standard time. Use the manual `workflow_dispatch` trigger from GitHub's Actions tab when you want to run it on demand.
 
