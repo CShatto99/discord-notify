@@ -8,6 +8,7 @@ Requires Node.js 18 or newer.
 
 ```bash
 npm install
+npm run build
 ```
 
 Create `.env` from `.env.example` and set your shared Discord webhook:
@@ -23,6 +24,9 @@ Run all enabled notifiers once:
 ```bash
 npm start
 ```
+
+`npm start` runs the compiled TypeScript output from `dist/`. Rebuild with
+`npm run build` after changing source files.
 
 Run one notifier by id:
 
@@ -59,10 +63,21 @@ This is OS-agnostic, but the process must stay running and the machine must stay
 
 ## Add A Notifier
 
-Create a file in `src/notifiers/` that exports a notifier object:
+Create a TypeScript file in `src/notifiers/` that exports a notifier object:
 
-```js
-export default {
+```ts
+import type { Notifier, NotifierChanges } from '../types.js';
+
+interface ExampleItem {
+  id: string;
+}
+
+interface ExampleChanges extends NotifierChanges {
+  added: ExampleItem[];
+  removed: ExampleItem[];
+}
+
+const exampleNotifier: Notifier<ExampleItem[], ExampleChanges> = {
   id: 'example-notifier',
   name: 'Example Notifier',
   schedule: '0 10 * * *',
@@ -91,9 +106,11 @@ export default {
     };
   },
 };
+
+export default exampleNotifier;
 ```
 
-Then register it in `src/notifiers/index.js`.
+Then register it in `src/notifiers/index.ts`.
 
 ## Snapshot Safety
 

@@ -2,15 +2,21 @@
   "name": "discord-notify",
   "version": "1.0.0",
   "type": "module",
-  "main": "src/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "schedule": "node src/scheduler.js",
-    "test": "node --test"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/src/index.js",
+    "schedule": "node dist/src/scheduler.js",
+    "test": "npm run build && node --test \"dist/test/*.js\""
   },
   "dependencies": {
     "cheerio": "1.0.0",
     "dotenv": "^16.4.7",
     "node-cron": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
   }
 }

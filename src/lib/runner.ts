@@ -1,30 +1,41 @@
 import { sendDiscordMessage } from './discord.js';
 import { readSnapshot, writeSnapshot } from './snapshots.js';
+import type {
+  FetchImpl,
+  Notifier,
+  NotifierChanges,
+  RunNotifierResult,
+} from '../types.js';
 
-export function hasChanges(changes) {
+export function hasChanges(changes: NotifierChanges): boolean {
   return Object.values(changes).some(value => Array.isArray(value) && value.length > 0);
 }
 
-export async function runNotifier(notifier, {
-  fetchImpl = fetch,
-  logger = console,
-  webhookUrl = process.env.DISCORD_WEBHOOK_URL,
-} = {}) {
-  logger?.log(`[${new Date().toISOString()}] Running ${notifier.name}...`);
+export async function runNotifier<State, Changes extends NotifierChanges>(
+  notifier: Notifier<State, Changes>,
+  {
+    fetchImpl = fetch,
+    webhookUrl = process.env.DISCORD_WEBHOOK_URL,
+  }: {
+    fetchImpl?: FetchImpl | undefined;
+    webhookUrl?: string | undefined;
+  } = {},
+): Promise<RunNotifierResult<State, Changes>> {
+  console.log(`[${new Date().toISOString()}] Running ${notifier.name}...`);
 
   const currentState = await notifier.getCurrentState({ fetchImpl });
-  const previousState = await readSnapshot(notifier.snapshotFile);
+  const previousState = await readSnapshot<State>(notifier.snapshotFile);
 
   if (!previousState) {
     await writeSnapshot(notifier.snapshotFile, currentState);
-    logger?.log(`${notifier.name}: baseline saved.`);
+    console.log(`${notifier.name}: baseline saved.`);
     return { status: 'baseline-created', notifierId: notifier.id, currentState };
   }
 
   const changes = notifier.compare(previousState, currentState);
 
   if (!hasChanges(changes)) {
-    logger?.log(`${notifier.name}: no changes detected.`);
+    console.log(`${notifier.name}: no changes detected.`);
     return { status: 'unchanged', notifierId: notifier.id, currentState, changes };
   }
 
@@ -32,7 +43,7 @@ export async function runNotifier(notifier, {
 
   await sendDiscordMessage({ fetchImpl, message, webhookUrl });
   await writeSnapshot(notifier.snapshotFile, currentState);
-  logger?.log(`${notifier.name}: notification sent and snapshot updated.`);
+  console.log(`${notifier.name}: notification sent and snapshot updated.`);
 
   return {
     status: 'changed',

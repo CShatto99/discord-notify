@@ -1,19 +1,64 @@
+import type { DiscordMessage, FetchImpl, Notifier, NotifierChanges } from '../types.js';
+
+export interface LegoIdea {
+  uuid: string;
+  title: string;
+  creator: string;
+  supportCount: number | null;
+  publishedAt: string | null;
+  updatedAt: string | null;
+  url: string;
+}
+
+export interface LegoIdeaChanges extends NotifierChanges {
+  added: LegoIdea[];
+}
+
+interface LegoIdeaApiRecord {
+  id?: unknown;
+  attributes?: {
+    uuid?: unknown;
+    title?: unknown;
+    creator?: {
+      attributes?: {
+        alias?: unknown;
+      };
+    };
+    support_count?: unknown;
+    published_at?: unknown;
+    updated_at?: unknown;
+  };
+}
+
 export const LEGO_APPROVED_IDEAS_API_URL =
   'https://ideas.lego.com/api/product_ideas?limit=48&offset=0&sort=-most_recent&phases=approved';
 export const LEGO_APPROVED_IDEAS_PAGE_URL =
   'https://ideas.lego.com/product-ideas?milestones=approved';
 
-export function normalizeIdeasResponse(payload) {
-  if (!Array.isArray(payload?.productIdeas)) {
+function asStringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function asNumberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+export function normalizeIdeasResponse(payload: unknown): LegoIdea[] {
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !Array.isArray((payload as { productIdeas?: unknown }).productIdeas)
+  ) {
     throw new Error('LEGO Ideas response did not include a productIdeas array.');
   }
 
-  const ideasByUuid = new Map();
+  const productIdeas = (payload as { productIdeas: LegoIdeaApiRecord[] }).productIdeas;
+  const ideasByUuid = new Map<string, LegoIdea>();
 
-  for (const idea of payload.productIdeas) {
+  for (const idea of productIdeas) {
     const attributes = idea?.attributes ?? {};
-    const uuid = attributes.uuid ?? idea?.id;
-    const title = attributes.title;
+    const uuid = asStringOrNull(attributes.uuid) ?? asStringOrNull(idea?.id);
+    const title = asStringOrNull(attributes.title);
 
     if (!uuid || !title) {
       continue;
@@ -23,10 +68,11 @@ export function normalizeIdeasResponse(payload) {
       ideasByUuid.set(uuid, {
         uuid,
         title,
-        creator: attributes.creator?.attributes?.alias ?? 'Unknown creator',
-        supportCount: attributes.support_count ?? null,
-        publishedAt: attributes.published_at ?? null,
-        updatedAt: attributes.updated_at ?? null,
+        creator:
+          asStringOrNull(attributes.creator?.attributes?.alias) ?? 'Unknown creator',
+        supportCount: asNumberOrNull(attributes.support_count),
+        publishedAt: asStringOrNull(attributes.published_at),
+        updatedAt: asStringOrNull(attributes.updated_at),
         url: `https://ideas.lego.com/projects/${uuid}`,
       });
     }
@@ -45,7 +91,10 @@ export function normalizeIdeasResponse(payload) {
   return ideas;
 }
 
-export function compareIdeas(previous, current) {
+export function compareIdeas(
+  previous: LegoIdea[],
+  current: LegoIdea[],
+): LegoIdeaChanges {
   const previousUuids = new Set(previous.map(idea => idea.uuid));
 
   return {
@@ -53,15 +102,17 @@ export function compareIdeas(previous, current) {
   };
 }
 
-function formatIdeaForDiscord(idea) {
-  const supportText = Number.isFinite(idea.supportCount)
+function formatIdeaForDiscord(idea: LegoIdea): string {
+  const supportText = idea.supportCount !== null && Number.isFinite(idea.supportCount)
     ? ` - ${idea.supportCount.toLocaleString('en-US')} supporters`
     : '';
 
   return `[${idea.title}](${idea.url}) by ${idea.creator}${supportText}`;
 }
 
-export async function getCurrentState({ fetchImpl = fetch } = {}) {
+export async function getCurrentState({
+  fetchImpl = fetch,
+}: { fetchImpl?: FetchImpl | undefined } = {}): Promise<LegoIdea[]> {
   const response = await fetchImpl(LEGO_APPROVED_IDEAS_API_URL, {
     headers: {
       'User-Agent':
@@ -79,7 +130,13 @@ export async function getCurrentState({ fetchImpl = fetch } = {}) {
   return normalizeIdeasResponse(await response.json());
 }
 
-export function buildDiscordMessage({ changes, currentState }) {
+export function buildDiscordMessage({
+  changes,
+  currentState,
+}: {
+  changes: LegoIdeaChanges;
+  currentState: LegoIdea[];
+}): DiscordMessage {
   return {
     username: 'LEGO Approved Ideas',
     embeds: [
@@ -107,7 +164,7 @@ export function buildDiscordMessage({ changes, currentState }) {
   };
 }
 
-export default {
+const legoApprovedIdeasNotifier: Notifier<LegoIdea[], LegoIdeaChanges> = {
   id: 'lego-approved-ideas',
   name: 'LEGO Approved Ideas',
   schedule: '0 10 * * *',
@@ -117,3 +174,5 @@ export default {
   compare: compareIdeas,
   buildDiscordMessage,
 };
+
+export default legoApprovedIdeasNotifier;

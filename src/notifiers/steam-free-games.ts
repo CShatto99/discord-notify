@@ -1,20 +1,32 @@
 import * as cheerio from 'cheerio';
+import type { DiscordMessage, FetchImpl, Notifier, NotifierChanges } from '../types.js';
+
+export interface SteamGame {
+  appId: string;
+  name: string;
+  url: string;
+}
+
+export interface SteamGameChanges extends NotifierChanges {
+  added: SteamGame[];
+  removed: SteamGame[];
+}
 
 export const STEAM_URL =
   'https://store.steampowered.com/search/?hwtype=0&maxprice=free&category1=998&specials=1&ndl=1';
 
-export function normalizeSteamUrl(rawUrl) {
-  return rawUrl.split('?')[0];
+export function normalizeSteamUrl(rawUrl: string): string {
+  return rawUrl.split('?')[0] ?? rawUrl;
 }
 
-export function getGameId(url) {
+export function getGameId(url: string): string {
   const appIdMatch = url.match(/store\.steampowered\.com\/app\/(\d+)/);
   return appIdMatch?.[1] ?? url;
 }
 
-export function parseFreeGames(html) {
+export function parseFreeGames(html: string): SteamGame[] {
   const $ = cheerio.load(html);
-  const gamesById = new Map();
+  const gamesById = new Map<string, SteamGame>();
 
   $('a.search_result_row').each((_, element) => {
     const row = $(element);
@@ -46,7 +58,10 @@ export function parseFreeGames(html) {
   return games;
 }
 
-export function compareGames(previous, current) {
+export function compareGames(
+  previous: SteamGame[],
+  current: SteamGame[],
+): SteamGameChanges {
   const previousIds = new Set(previous.map(game => game.appId));
   const currentIds = new Set(current.map(game => game.appId));
 
@@ -56,7 +71,9 @@ export function compareGames(previous, current) {
   };
 }
 
-export async function getCurrentState({ fetchImpl = fetch } = {}) {
+export async function getCurrentState({
+  fetchImpl = fetch,
+}: { fetchImpl?: FetchImpl | undefined } = {}): Promise<SteamGame[]> {
   const response = await fetchImpl(STEAM_URL, {
     headers: {
       'User-Agent':
@@ -71,7 +88,13 @@ export async function getCurrentState({ fetchImpl = fetch } = {}) {
   return parseFreeGames(await response.text());
 }
 
-export function buildDiscordMessage({ changes, currentState }) {
+export function buildDiscordMessage({
+  changes,
+  currentState,
+}: {
+  changes: SteamGameChanges;
+  currentState: SteamGame[];
+}): DiscordMessage {
   const fields = [];
 
   if (changes.added.length > 0) {
@@ -113,7 +136,7 @@ export function buildDiscordMessage({ changes, currentState }) {
   };
 }
 
-export default {
+const steamFreeGamesNotifier: Notifier<SteamGame[], SteamGameChanges> = {
   id: 'steam-free-games',
   name: 'Steam Free Games',
   schedule: '0 10 * * *',
@@ -123,3 +146,5 @@ export default {
   compare: compareGames,
   buildDiscordMessage,
 };
+
+export default steamFreeGamesNotifier;

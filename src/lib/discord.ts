@@ -1,4 +1,14 @@
-export async function sendDiscordMessage({ webhookUrl, message, fetchImpl = fetch }) {
+import type { DiscordMessage, FetchImpl } from '../types.js';
+
+export async function sendDiscordMessage({
+  webhookUrl,
+  message,
+  fetchImpl = fetch,
+}: {
+  webhookUrl?: string | undefined;
+  message: DiscordMessage;
+  fetchImpl?: FetchImpl | undefined;
+}): Promise<void> {
   if (!webhookUrl) {
     throw new Error('Discord webhook URL has not been configured.');
   }

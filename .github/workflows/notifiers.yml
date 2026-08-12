@@ -28,6 +28,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run build
+
       - run: npm start
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

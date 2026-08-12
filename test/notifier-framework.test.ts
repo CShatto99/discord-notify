@@ -8,17 +8,20 @@ import {
   compareGames,
   default as steamFreeGamesNotifier,
   parseFreeGames,
+  type SteamGame,
 } from '../src/notifiers/steam-free-games.js';
 import {
   buildDiscordMessage as buildLegoDiscordMessage,
   compareIdeas,
   default as legoApprovedIdeasNotifier,
   normalizeIdeasResponse,
+  type LegoIdea,
 } from '../src/notifiers/lego-approved-ideas.js';
 import { runNotifier } from '../src/lib/runner.js';
 import { sendDiscordMessage } from '../src/lib/discord.js';
 import { runSelectedNotifiers, selectNotifiers } from '../src/index.js';
 import { notifiers } from '../src/notifiers/index.js';
+import type { DiscordMessage, FetchImpl } from '../src/types.js';
 
 const SEARCH_HTML = `
   <a class="search_result_row" href="https://store.steampowered.com/app/200/Beta_Game/?snr=1_7_7_151_150_1">
@@ -76,25 +79,18 @@ const LEGO_API_RESPONSE = {
   ],
 };
 
-function htmlFetch(html) {
-  return async () => ({
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    text: async () => html,
-  });
+function htmlFetch(html: string): FetchImpl {
+  return async () => new Response(html, { status: 200, statusText: 'OK' });
 }
 
-function jsonFetch(payload) {
-  return async () => ({
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    json: async () => payload,
-  });
+function jsonFetch(payload: unknown): FetchImpl {
+  return async () => Response.json(payload, { status: 200, statusText: 'OK' });
 }
 
-async function tempSnapshotFile() {
+async function tempSnapshotFile(): Promise<{
+  directory: string;
+  snapshotFile: string;
+}> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'steam-monitor-'));
   return {
     directory,
@@ -102,7 +98,10 @@ async function tempSnapshotFile() {
   };
 }
 
-async function tempLegoSnapshotFile() {
+async function tempLegoSnapshotFile(): Promise<{
+  directory: string;
+  snapshotFile: string;
+}> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'lego-ideas-monitor-'));
   return {
     directory,
@@ -110,14 +109,14 @@ async function tempLegoSnapshotFile() {
   };
 }
 
-function steamNotifierForTest(snapshotFile) {
+function steamNotifierForTest(snapshotFile: string) {
   return {
     ...steamFreeGamesNotifier,
     snapshotFile,
   };
 }
 
-function legoNotifierForTest(snapshotFile) {
+function legoNotifierForTest(snapshotFile: string) {
   return {
     ...legoApprovedIdeasNotifier,
     snapshotFile,
@@ -154,11 +153,11 @@ test('parseFreeGames refuses an empty parsed result', () => {
 });
 
 test('compareGames reports additions and removals by app id', () => {
-  const previous = [
+  const previous: SteamGame[] = [
     { appId: '100', name: 'Alpha Game', url: 'https://example.com/alpha' },
     { appId: '200', name: 'Beta Game', url: 'https://example.com/beta' },
   ];
-  const current = [
+  const current: SteamGame[] = [
     { appId: '200', name: 'Beta Game', url: 'https://example.com/beta-new' },
     { appId: '300', name: 'Gamma Game', url: 'https://example.com/gamma' },
   ];
@@ -170,11 +169,11 @@ test('compareGames reports additions and removals by app id', () => {
 });
 
 test('compareGames ignores reordered games', () => {
-  const previous = [
+  const previous: SteamGame[] = [
     { appId: '100', name: 'Alpha Game', url: 'https://example.com/alpha' },
     { appId: '200', name: 'Beta Game', url: 'https://example.com/beta' },
   ];
-  const current = [previous[1], previous[0]];
+  const current = [previous[1]!, previous[0]!];
 
   assert.deepEqual(compareGames(previous, current), {
     added: [],
@@ -213,13 +212,45 @@ test('normalizeIdeasResponse refuses an empty LEGO result', () => {
 });
 
 test('compareIdeas reports only newly approved ideas by uuid', () => {
-  const previous = [
-    { uuid: 'alpha-uuid', title: 'Alpha Build' },
-    { uuid: 'removed-uuid', title: 'Removed Build' },
+  const previous: LegoIdea[] = [
+    {
+      uuid: 'alpha-uuid',
+      title: 'Alpha Build',
+      creator: 'AlphaBuilder',
+      supportCount: null,
+      publishedAt: null,
+      updatedAt: null,
+      url: 'https://ideas.lego.com/projects/alpha-uuid',
+    },
+    {
+      uuid: 'removed-uuid',
+      title: 'Removed Build',
+      creator: 'RemovedBuilder',
+      supportCount: null,
+      publishedAt: null,
+      updatedAt: null,
+      url: 'https://ideas.lego.com/projects/removed-uuid',
+    },
   ];
-  const current = [
-    { uuid: 'alpha-uuid', title: 'Alpha Build Updated' },
-    { uuid: 'beta-uuid', title: 'Beta Build' },
+  const current: LegoIdea[] = [
+    {
+      uuid: 'alpha-uuid',
+      title: 'Alpha Build Updated',
+      creator: 'AlphaBuilder',
+      supportCount: null,
+      publishedAt: null,
+      updatedAt: null,
+      url: 'https://ideas.lego.com/projects/alpha-uuid',
+    },
+    {
+      uuid: 'beta-uuid',
+      title: 'Beta Build',
+      creator: 'BetaBuilder',
+      supportCount: null,
+      publishedAt: null,
+      updatedAt: null,
+      url: 'https://ideas.lego.com/projects/beta-uuid',
+    },
   ];
 
   assert.deepEqual(compareIdeas(previous, current), {
@@ -230,7 +261,7 @@ test('compareIdeas reports only newly approved ideas by uuid', () => {
 test('LEGO getCurrentState rejects non-success responses', async () => {
   await assert.rejects(
     legoApprovedIdeasNotifier.getCurrentState({
-      fetchImpl: async () => ({ ok: false, status: 503, statusText: 'Unavailable' }),
+      fetchImpl: async () => new Response('', { status: 503, statusText: 'Unavailable' }),
     }),
     /LEGO Ideas request failed: 503 Unavailable/,
   );
@@ -255,7 +286,6 @@ test('runNotifier preserves the old snapshot when LEGO returns zero ideas', asyn
   await assert.rejects(
     runNotifier(legoNotifierForTest(snapshotFile), {
       fetchImpl: jsonFetch({ productIdeas: [] }),
-      logger: null,
       webhookUrl: 'https://discord.example/webhook',
     }),
     /LEGO Ideas returned zero approved ideas/,
@@ -272,6 +302,8 @@ test('buildLegoDiscordMessage includes newly approved ideas', () => {
           title: 'Beta Build',
           creator: 'BetaBuilder',
           supportCount: 10001,
+          publishedAt: null,
+          updatedAt: null,
           url: 'https://ideas.lego.com/projects/beta-uuid',
         },
       ],
@@ -280,9 +312,9 @@ test('buildLegoDiscordMessage includes newly approved ideas', () => {
   });
 
   assert.equal(message.username, 'LEGO Approved Ideas');
-  assert.equal(message.embeds[0].title, 'New LEGO Ideas Approved');
-  assert.match(message.embeds[0].description, /currently \*\*2\*\* approved ideas/);
-  assert.deepEqual(message.embeds[0].fields, [
+  assert.equal(message.embeds[0]?.title, 'New LEGO Ideas Approved');
+  assert.match(message.embeds[0]?.description ?? '', /currently \*\*2\*\* approved ideas/);
+  assert.deepEqual(message.embeds[0]?.fields, [
     {
       name: 'Newly Approved',
       value: '[Beta Build](https://ideas.lego.com/projects/beta-uuid) by BetaBuilder - 10,001 supporters',
@@ -296,8 +328,6 @@ test('runNotifier creates a baseline without requiring Discord', async () => {
 
   const result = await runNotifier(steamNotifierForTest(snapshotFile), {
     fetchImpl: htmlFetch(ALPHA_HTML),
-    logger: null,
-    snapshotFile,
   });
 
   assert.equal(result.status, 'baseline-created');
@@ -324,8 +354,6 @@ test('runNotifier leaves an unchanged snapshot untouched and does not require Di
 
   const result = await runNotifier(steamNotifierForTest(snapshotFile), {
     fetchImpl: htmlFetch(ALPHA_HTML),
-    logger: null,
-    snapshotFile,
   });
 
   assert.equal(result.status, 'unchanged');
@@ -342,19 +370,17 @@ test('runNotifier updates the snapshot after a successful Discord notification',
       url: 'https://store.steampowered.com/app/100/Alpha_Game/',
     },
   ]), 'utf8');
-  const requestedUrls = [];
-  const fetchImpl = async url => {
+  const requestedUrls: string[] = [];
+  const fetchImpl: FetchImpl = async url => {
     requestedUrls.push(String(url));
     if (String(url).startsWith('https://discord.example/webhook')) {
-      return { ok: true, status: 204, text: async () => '' };
+      return new Response(null, { status: 204 });
     }
-    return htmlFetch(ALPHA_BETA_HTML)();
+    return htmlFetch(ALPHA_BETA_HTML)(url);
   };
 
   const result = await runNotifier(steamNotifierForTest(snapshotFile), {
     fetchImpl,
-    logger: null,
-    snapshotFile,
     webhookUrl: 'https://discord.example/webhook',
   });
 
@@ -362,7 +388,7 @@ test('runNotifier updates the snapshot after a successful Discord notification',
   assert.deepEqual(result.added.map(game => game.appId), ['200']);
   assert.equal(requestedUrls.at(-1), 'https://discord.example/webhook');
   assert.deepEqual(
-    JSON.parse(await fs.readFile(snapshotFile, 'utf8')).map(game => game.appId),
+    JSON.parse(await fs.readFile(snapshotFile, 'utf8')).map((game: SteamGame) => game.appId),
     ['100', '200'],
   );
 });
@@ -378,18 +404,16 @@ test('runNotifier preserves the old snapshot when Discord fails', async () => {
     },
   ], null, 2);
   await fs.writeFile(snapshotFile, previousContents, 'utf8');
-  const fetchImpl = async url => {
+  const fetchImpl: FetchImpl = async url => {
     if (String(url).startsWith('https://discord.example/webhook')) {
-      return { ok: false, status: 500, text: async () => 'server error' };
+      return new Response('server error', { status: 500 });
     }
-    return htmlFetch(ALPHA_BETA_HTML)();
+    return htmlFetch(ALPHA_BETA_HTML)(url);
   };
 
   await assert.rejects(
     runNotifier(steamNotifierForTest(snapshotFile), {
       fetchImpl,
-      logger: null,
-      snapshotFile,
       webhookUrl: 'https://discord.example/webhook',
     }),
     /Discord webhook failed: 500 server error/,
@@ -412,8 +436,6 @@ test('runNotifier preserves the old snapshot when Steam parses zero games', asyn
   await assert.rejects(
     runNotifier(steamNotifierForTest(snapshotFile), {
       fetchImpl: htmlFetch('<html><body>No games here</body></html>'),
-      logger: null,
-      snapshotFile,
       webhookUrl: 'https://discord.example/webhook',
     }),
     /Steam returned zero games/,
@@ -422,10 +444,10 @@ test('runNotifier preserves the old snapshot when Steam parses zero games', asyn
 });
 
 test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
-  let payload;
-  const fetchImpl = async (_url, options) => {
-    payload = JSON.parse(options.body);
-    return { ok: true, status: 204, text: async () => '' };
+  let payload: DiscordMessage | undefined;
+  const fetchImpl: FetchImpl = async (_url, options) => {
+    payload = JSON.parse(String(options?.body)) as DiscordMessage;
+    return new Response(null, { status: 204 });
   };
 
   await sendDiscordMessage({
@@ -451,14 +473,15 @@ test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
         { appId: '100', name: 'Alpha Game', url: 'https://store.steampowered.com/app/100/Alpha_Game/' },
         { appId: '200', name: 'Beta Game', url: 'https://store.steampowered.com/app/200/Beta_Game/' },
       ],
+      previousState: [],
     }),
     webhookUrl: 'https://discord.example/webhook',
   });
 
-  assert.equal(payload.username, 'Steam Free Games');
-  assert.equal(payload.embeds[0].title, 'Steam Free Games Changed');
-  assert.match(payload.embeds[0].description, /currently \*\*2\*\* games/);
-  assert.deepEqual(payload.embeds[0].fields, [
+  assert.equal(payload?.username, 'Steam Free Games');
+  assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');
+  assert.match(payload?.embeds[0]?.description ?? '', /currently \*\*2\*\* games/);
+  assert.deepEqual(payload?.embeds[0]?.fields, [
     {
       name: 'Newly Free',
       value: '[Beta Game](https://store.steampowered.com/app/200/Beta_Game/)',
@@ -473,7 +496,7 @@ test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
 test('sendDiscordMessage rejects missing webhook configuration', async () => {
   await assert.rejects(
     sendDiscordMessage({
-      fetchImpl: async () => ({ ok: true, status: 204, text: async () => '' }),
+      fetchImpl: async () => new Response(null, { status: 204 }),
       message: { username: 'Test', embeds: [] },
       webhookUrl: '',
     }),
@@ -484,7 +507,7 @@ test('sendDiscordMessage rejects missing webhook configuration', async () => {
 test('sendDiscordMessage rejects Discord non-success responses', async () => {
   await assert.rejects(
     sendDiscordMessage({
-      fetchImpl: async () => ({ ok: false, status: 429, text: async () => 'rate limited' }),
+      fetchImpl: async () => new Response('rate limited', { status: 429 }),
       message: { username: 'Test', embeds: [] },
       webhookUrl: 'https://discord.example/webhook',
     }),
@@ -516,7 +539,7 @@ test('selectNotifiers rejects an unknown notifier id', () => {
 });
 
 test('runSelectedNotifiers continues after a notifier returns a non-ideal result', async () => {
-  const calls = [];
+  const calls: string[] = [];
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'selected-notifiers-'));
   test.after(async () => fs.rm(directory, { recursive: true, force: true }));
   const first = {
@@ -530,23 +553,30 @@ test('runSelectedNotifiers continues after a notifier returns a non-ideal result
   const second = {
     id: 'second-notifier',
     name: 'Second Notifier',
+    schedule: '0 10 * * *',
+    timezone: 'America/Chicago',
     snapshotFile: path.join(directory, 'second.json'),
     async getCurrentState() {
       calls.push('second');
       return [{ id: 'baseline' }];
     },
+    compare() {
+      return { added: [] };
+    },
+    buildDiscordMessage() {
+      return { username: 'Second Notifier', embeds: [] };
+    },
   };
 
   const results = await runSelectedNotifiers({
     availableNotifiers: [first, second],
-    logger: null,
   });
 
   assert.deepEqual(calls, ['first', 'second']);
-  assert.equal(results[0].status, 'failed');
-  assert.equal(results[0].notifierId, 'first-notifier');
-  assert.match(results[0].error.message, /external page returned no results/);
-  assert.equal(results[1].status, 'baseline-created');
+  assert.equal(results[0]?.status, 'failed');
+  assert.equal(results[0]?.notifierId, 'first-notifier');
+  assert.match(String(results[0]?.error instanceof Error ? results[0].error.message : ''), /external page returned no results/);
+  assert.equal(results[1]?.status, 'baseline-created');
 });
 
 test('runSelectedNotifiers does not send Discord for failed notifier results', async () => {
@@ -569,11 +599,10 @@ test('runSelectedNotifiers does not send Discord for failed notifier results', a
 
   const results = await runSelectedNotifiers({
     availableNotifiers: [failingNotifier],
-    logger: null,
   });
 
-  assert.equal(results[0].status, 'failed');
-  assert.equal(results[0].error.message, 'zero results');
+  assert.equal(results[0]?.status, 'failed');
+  assert.equal(results[0]?.error instanceof Error ? results[0].error.message : '', 'zero results');
 });
 
 test('all registered notifiers run daily at 10 AM Central Time', () => {
@@ -598,10 +627,10 @@ test('all registered notifiers run daily at 10 AM Central Time', () => {
   );
 });
 
-test('package entrypoint points at the notifier framework', async () => {
+test('package entrypoint points at the compiled notifier framework', async () => {
   const packageJson = JSON.parse(
-    await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'),
-  );
+    await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf8'),
+  ) as { main: string };
 
-  assert.equal(packageJson.main, 'src/index.js');
+  assert.equal(packageJson.main, 'dist/src/index.js');
 });
