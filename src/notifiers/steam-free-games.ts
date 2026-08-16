@@ -96,6 +96,7 @@ export function buildDiscordMessage({
   currentState: SteamGame[];
 }): DiscordMessage {
   const fields = [];
+  const countVerb = currentState.length === 1 ? 'is' : 'are';
   const gameText = currentState.length === 1 ? 'game' : 'games';
 
   if (changes.added.length > 0) {
@@ -119,7 +120,7 @@ export function buildDiscordMessage({
   }
 
   return {
-    username: 'Steam Free Games',
+    username: 'Discord Notify',
     content: '@everyone',
     allowed_mentions: {
       parse: ['everyone'],
@@ -130,7 +131,7 @@ export function buildDiscordMessage({
         url: STEAM_URL,
         description:
           `Steam's free-game promotion list changed. ` +
-          `There are currently **${currentState.length}** ${gameText} on the page.`,
+          `There ${countVerb} currently **${currentState.length}** ${gameText} on the page.`,
         fields,
         timestamp: new Date().toISOString(),
       },

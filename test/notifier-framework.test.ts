@@ -315,11 +315,14 @@ test('buildLegoDiscordMessage includes newly approved ideas', () => {
     currentState: normalizeIdeasResponse(LEGO_API_RESPONSE),
   });
 
-  assert.equal(message.username, 'LEGO Approved Ideas');
+  assert.equal(message.username, 'Discord Notify');
   assert.equal(message.content, '@everyone');
   assert.deepEqual(message.allowed_mentions, { parse: ['everyone'] });
   assert.equal(message.embeds[0]?.title, 'New LEGO Ideas Approved');
-  assert.match(message.embeds[0]?.description ?? '', /currently \*\*2\*\* approved ideas/);
+  assert.equal(
+    message.embeds[0]?.description,
+    'The LEGO Ideas approved list changed. There are currently **2** approved ideas.',
+  );
   assert.equal((message.embeds[0] as DiscordEmbedWithFooter | undefined)?.footer, undefined);
   assert.deepEqual(message.embeds[0]?.fields, [
     {
@@ -336,8 +339,10 @@ test('buildLegoDiscordMessage uses singular approved idea text', () => {
     currentState,
   });
 
-  assert.match(message.embeds[0]?.description ?? '', /currently \*\*1\*\* approved idea\./);
-  assert.doesNotMatch(message.embeds[0]?.description ?? '', /1\*\* approved ideas/);
+  assert.equal(
+    message.embeds[0]?.description,
+    'The LEGO Ideas approved list changed. There is currently **1** approved idea.',
+  );
 });
 
 test('runNotifier sends Discord before creating a baseline snapshot', async () => {
@@ -363,7 +368,7 @@ test('runNotifier sends Discord before creating a baseline snapshot', async () =
 
   assert.equal(result.status, 'baseline-created');
   assert.deepEqual(events, ['discord']);
-  assert.equal(payload?.username, 'Steam Free Games');
+  assert.equal(payload?.username, 'Discord Notify');
   assert.equal(payload?.content, '@everyone');
   assert.deepEqual(payload?.allowed_mentions, { parse: ['everyone'] });
   assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');
@@ -542,11 +547,14 @@ test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
     webhookUrl: 'https://discord.example/webhook',
   });
 
-  assert.equal(payload?.username, 'Steam Free Games');
+  assert.equal(payload?.username, 'Discord Notify');
   assert.equal(payload?.content, '@everyone');
   assert.deepEqual(payload?.allowed_mentions, { parse: ['everyone'] });
   assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');
-  assert.match(payload?.embeds[0]?.description ?? '', /currently \*\*2\*\* games/);
+  assert.equal(
+    payload?.embeds[0]?.description,
+    "Steam's free-game promotion list changed. There are currently **2** games on the page.",
+  );
   assert.equal((payload?.embeds[0] as DiscordEmbedWithFooter | undefined)?.footer, undefined);
   assert.deepEqual(payload?.embeds[0]?.fields, [
     {
@@ -570,8 +578,10 @@ test('buildSteamDiscordMessage uses singular game text', () => {
     previousState: [],
   });
 
-  assert.match(message.embeds[0]?.description ?? '', /currently \*\*1\*\* game on the page\./);
-  assert.doesNotMatch(message.embeds[0]?.description ?? '', /1\*\* games/);
+  assert.equal(
+    message.embeds[0]?.description,
+    "Steam's free-game promotion list changed. There is currently **1** game on the page.",
+  );
 });
 
 test('sendDiscordMessage rejects missing webhook configuration', async () => {

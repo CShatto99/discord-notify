@@ -137,10 +137,11 @@ export function buildDiscordMessage({
   changes: LegoIdeaChanges;
   currentState: LegoIdea[];
 }): DiscordMessage {
+  const countVerb = currentState.length === 1 ? 'is' : 'are';
   const ideaText = currentState.length === 1 ? 'approved idea' : 'approved ideas';
 
   return {
-    username: 'LEGO Approved Ideas',
+    username: 'Discord Notify',
     content: '@everyone',
     allowed_mentions: {
       parse: ['everyone'],
@@ -151,7 +152,7 @@ export function buildDiscordMessage({
         url: LEGO_APPROVED_IDEAS_PAGE_URL,
         description:
           `The LEGO Ideas approved list changed. ` +
-          `There are currently **${currentState.length}** ${ideaText}.`,
+          `There ${countVerb} currently **${currentState.length}** ${ideaText}.`,
         fields: [
           {
             name: 'Newly Approved',
