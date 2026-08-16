@@ -27,8 +27,17 @@ export async function runNotifier<State, Changes extends NotifierChanges>(
   const previousState = await readSnapshot<State>(notifier.snapshotFile);
 
   if (!previousState) {
+    const baselinePreviousState = [] as State;
+    const changes = notifier.compare(baselinePreviousState, currentState);
+    const message = notifier.buildDiscordMessage({
+      changes,
+      currentState,
+      previousState: baselinePreviousState,
+    });
+
+    await sendDiscordMessage({ fetchImpl, message, webhookUrl });
     await writeSnapshot(notifier.snapshotFile, currentState);
-    console.log(`${notifier.name}: baseline saved.`);
+    console.log(`${notifier.name}: baseline notification sent and snapshot saved.`);
     return { status: 'baseline-created', notifierId: notifier.id, currentState };
   }
 

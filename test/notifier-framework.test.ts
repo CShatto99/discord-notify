@@ -23,6 +23,10 @@ import { runSelectedNotifiers, selectNotifiers } from '../src/index.js';
 import { notifiers } from '../src/notifiers/index.js';
 import type { DiscordMessage, FetchImpl } from '../src/types.js';
 
+type DiscordEmbedWithFooter = DiscordMessage['embeds'][number] & {
+  footer?: unknown;
+};
+
 const SEARCH_HTML = `
   <a class="search_result_row" href="https://store.steampowered.com/app/200/Beta_Game/?snr=1_7_7_151_150_1">
     <span class="title">Beta Game</span>
@@ -312,8 +316,11 @@ test('buildLegoDiscordMessage includes newly approved ideas', () => {
   });
 
   assert.equal(message.username, 'LEGO Approved Ideas');
+  assert.equal(message.content, '@everyone');
+  assert.deepEqual(message.allowed_mentions, { parse: ['everyone'] });
   assert.equal(message.embeds[0]?.title, 'New LEGO Ideas Approved');
   assert.match(message.embeds[0]?.description ?? '', /currently \*\*2\*\* approved ideas/);
+  assert.equal((message.embeds[0] as DiscordEmbedWithFooter | undefined)?.footer, undefined);
   assert.deepEqual(message.embeds[0]?.fields, [
     {
       name: 'Newly Approved',
@@ -322,15 +329,50 @@ test('buildLegoDiscordMessage includes newly approved ideas', () => {
   ]);
 });
 
-test('runNotifier creates a baseline without requiring Discord', async () => {
+test('buildLegoDiscordMessage uses singular approved idea text', () => {
+  const currentState = [normalizeIdeasResponse(LEGO_API_RESPONSE)[0]!];
+  const message = buildLegoDiscordMessage({
+    changes: { added: currentState },
+    currentState,
+  });
+
+  assert.match(message.embeds[0]?.description ?? '', /currently \*\*1\*\* approved idea\./);
+  assert.doesNotMatch(message.embeds[0]?.description ?? '', /1\*\* approved ideas/);
+});
+
+test('runNotifier sends Discord before creating a baseline snapshot', async () => {
   const { directory, snapshotFile } = await tempSnapshotFile();
   test.after(async () => fs.rm(directory, { recursive: true, force: true }));
+  const events: string[] = [];
+  let payload: DiscordMessage | undefined;
+  const fetchImpl: FetchImpl = async (url, options) => {
+    if (String(url).startsWith('https://discord.example/webhook')) {
+      events.push('discord');
+      payload = JSON.parse(String(options?.body)) as DiscordMessage;
+      await assert.rejects(fs.access(snapshotFile), /ENOENT/);
+      return new Response(null, { status: 204 });
+    }
+
+    return htmlFetch(ALPHA_HTML)(url, options);
+  };
 
   const result = await runNotifier(steamNotifierForTest(snapshotFile), {
-    fetchImpl: htmlFetch(ALPHA_HTML),
+    fetchImpl,
+    webhookUrl: 'https://discord.example/webhook',
   });
 
   assert.equal(result.status, 'baseline-created');
+  assert.deepEqual(events, ['discord']);
+  assert.equal(payload?.username, 'Steam Free Games');
+  assert.equal(payload?.content, '@everyone');
+  assert.deepEqual(payload?.allowed_mentions, { parse: ['everyone'] });
+  assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');
+  assert.deepEqual(payload?.embeds[0]?.fields, [
+    {
+      name: 'Newly Free',
+      value: '[Alpha Game](https://store.steampowered.com/app/100/Alpha_Game/)',
+    },
+  ]);
   assert.deepEqual(JSON.parse(await fs.readFile(snapshotFile, 'utf8')), [
     {
       appId: '100',
@@ -338,6 +380,28 @@ test('runNotifier creates a baseline without requiring Discord', async () => {
       url: 'https://store.steampowered.com/app/100/Alpha_Game/',
     },
   ]);
+});
+
+test('runNotifier does not create a baseline snapshot when Discord fails', async () => {
+  const { directory, snapshotFile } = await tempSnapshotFile();
+  test.after(async () => fs.rm(directory, { recursive: true, force: true }));
+  const fetchImpl: FetchImpl = async (url, options) => {
+    if (String(url).startsWith('https://discord.example/webhook')) {
+      await assert.rejects(fs.access(snapshotFile), /ENOENT/);
+      return new Response('server error', { status: 500 });
+    }
+
+    return htmlFetch(ALPHA_HTML)(url, options);
+  };
+
+  await assert.rejects(
+    runNotifier(steamNotifierForTest(snapshotFile), {
+      fetchImpl,
+      webhookUrl: 'https://discord.example/webhook',
+    }),
+    /Discord webhook failed: 500 server error/,
+  );
+  await assert.rejects(fs.access(snapshotFile), /ENOENT/);
 });
 
 test('runNotifier leaves an unchanged snapshot untouched and does not require Discord', async () => {
@@ -479,8 +543,11 @@ test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
   });
 
   assert.equal(payload?.username, 'Steam Free Games');
+  assert.equal(payload?.content, '@everyone');
+  assert.deepEqual(payload?.allowed_mentions, { parse: ['everyone'] });
   assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');
   assert.match(payload?.embeds[0]?.description ?? '', /currently \*\*2\*\* games/);
+  assert.equal((payload?.embeds[0] as DiscordEmbedWithFooter | undefined)?.footer, undefined);
   assert.deepEqual(payload?.embeds[0]?.fields, [
     {
       name: 'Newly Free',
@@ -491,6 +558,20 @@ test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
       value: 'Alpha Game',
     },
   ]);
+});
+
+test('buildSteamDiscordMessage uses singular game text', () => {
+  const currentState = [
+    { appId: '100', name: 'Alpha Game', url: 'https://store.steampowered.com/app/100/Alpha_Game/' },
+  ];
+  const message = steamFreeGamesNotifier.buildDiscordMessage({
+    changes: { added: currentState, removed: [] },
+    currentState,
+    previousState: [],
+  });
+
+  assert.match(message.embeds[0]?.description ?? '', /currently \*\*1\*\* game on the page\./);
+  assert.doesNotMatch(message.embeds[0]?.description ?? '', /1\*\* games/);
 });
 
 test('sendDiscordMessage rejects missing webhook configuration', async () => {
@@ -542,6 +623,18 @@ test('runSelectedNotifiers continues after a notifier returns a non-ideal result
   const calls: string[] = [];
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'selected-notifiers-'));
   test.after(async () => fs.rm(directory, { recursive: true, force: true }));
+  const originalWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  const originalFetch = globalThis.fetch;
+  process.env.DISCORD_WEBHOOK_URL = 'https://discord.example/webhook';
+  globalThis.fetch = (async () => new Response(null, { status: 204 })) as typeof fetch;
+  test.after(() => {
+    if (originalWebhookUrl === undefined) {
+      delete process.env.DISCORD_WEBHOOK_URL;
+    } else {
+      process.env.DISCORD_WEBHOOK_URL = originalWebhookUrl;
+    }
+    globalThis.fetch = originalFetch;
+  });
   const first = {
     id: 'first-notifier',
     name: 'First Notifier',

@@ -10,14 +10,15 @@ export interface DiscordEmbed {
   url?: string;
   description?: string;
   fields?: DiscordEmbedField[];
-  footer?: {
-    text: string;
-  };
   timestamp?: string;
 }
 
 export interface DiscordMessage {
   username: string;
+  content?: string;
+  allowed_mentions?: {
+    parse: Array<'everyone'>;
+  };
   embeds: DiscordEmbed[];
 }
 
