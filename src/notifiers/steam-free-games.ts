@@ -120,7 +120,7 @@ export function buildDiscordMessage({
   }
 
   return {
-    username: 'Discord Notify',
+    username: 'Notify Bot',
     content: '@everyone',
     allowed_mentions: {
       parse: ['everyone'],

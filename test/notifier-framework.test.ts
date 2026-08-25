@@ -315,7 +315,7 @@ test('buildLegoDiscordMessage includes newly approved ideas', () => {
     currentState: normalizeIdeasResponse(LEGO_API_RESPONSE),
   });
 
-  assert.equal(message.username, 'Discord Notify');
+  assert.equal(message.username, 'Notify Bot');
   assert.equal(message.content, '@everyone');
   assert.deepEqual(message.allowed_mentions, { parse: ['everyone'] });
   assert.equal(message.embeds[0]?.title, 'New LEGO Ideas Approved');
@@ -368,7 +368,7 @@ test('runNotifier sends Discord before creating a baseline snapshot', async () =
 
   assert.equal(result.status, 'baseline-created');
   assert.deepEqual(events, ['discord']);
-  assert.equal(payload?.username, 'Discord Notify');
+  assert.equal(payload?.username, 'Notify Bot');
   assert.equal(payload?.content, '@everyone');
   assert.deepEqual(payload?.allowed_mentions, { parse: ['everyone'] });
   assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');
@@ -547,7 +547,7 @@ test('sendDiscordMessage posts a notifier-built Discord payload', async () => {
     webhookUrl: 'https://discord.example/webhook',
   });
 
-  assert.equal(payload?.username, 'Discord Notify');
+  assert.equal(payload?.username, 'Notify Bot');
   assert.equal(payload?.content, '@everyone');
   assert.deepEqual(payload?.allowed_mentions, { parse: ['everyone'] });
   assert.equal(payload?.embeds[0]?.title, 'Steam Free Games Changed');

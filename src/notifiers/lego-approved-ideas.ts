@@ -141,7 +141,7 @@ export function buildDiscordMessage({
   const ideaText = currentState.length === 1 ? 'approved idea' : 'approved ideas';
 
   return {
-    username: 'Discord Notify',
+    username: 'Notify Bot',
     content: '@everyone',
     allowed_mentions: {
       parse: ['everyone'],
